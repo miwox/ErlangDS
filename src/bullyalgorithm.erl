@@ -4,14 +4,15 @@
 -define(filterHigher, fun(Process) -> Process > self() end).
 -define(filterLower, fun(Process) -> Process < self() end).
 -define(filterTrue, fun(Process) -> Process == Process end).
+-define(filterTrueXD, ?filterTrue + 2).
 
--export([main/0, bully_node/4, bully_node_creator/2, message_counter/5]).
+-export([main/0, bully_node/4, bully_node_creator/2, message_counter/5, mainKillCoordinatorBeforeSendingCoordintor/0]).
 
 
 bully_node(ListOfProcesses, Counter, Coordinator, StartedElection) ->
   receive
-    kill -> kill;
-    startElection -> if
+    kill -> io:format("I got killed ~p \n", [self()]);
+    startElection -> if %a node already started an election, he still waits for an answer
                        StartedElection == true ->
                          io:format("Hello I'm ~p i know: ~p, and I already started an Election... ~n", [self(), ListOfProcesses]),
                          bully_node(ListOfProcesses, Counter, Coordinator, StartedElection);
@@ -62,7 +63,7 @@ wait_for_coordinator_after_okay(ListOfProcesses, Counter, Coordinator, StartedEl
   after 300 ->
     io:format("Hello I'm ~p I didn't receive a new Coordinator from ~p I start new Election \n", [self(), ListOfProcesses]),
     self() ! startElection,
-    bully_node(ListOfProcesses, Counter, Coordinator, StartedElection)
+    bully_node(ListOfProcesses, Counter, Coordinator, false)
   end.
 
 
@@ -108,7 +109,7 @@ main() ->
   FirstElement = lists:nth(1, List_of_Friends),
   timer:sleep(100),
   FirstElement ! startElection,
-  timer:sleep(2500),
+  timer:sleep(500),
   Counter  ! {get, election_messages},
   receive
     X -> io:format("Election-Messages sent: ~p ~nin Total: ~p election messages were sent ~n", [X, lists:flatlength(X)])
@@ -123,3 +124,28 @@ main() ->
     XS -> io:format("Election-Messages sent: ~p ~nin Total: ~p election messages were sent ~n", [XS, lists:flatlength(XS)])
   end
 .
+
+
+mainKillCoordinatorBeforeSendingCoordintor() ->
+  Counter = counter_creator(self()),
+  List_of_Friends = setup_n_bully_processes(5, [], Counter),
+  FirstElement = lists:nth(1, List_of_Friends),
+  timer:sleep(100),
+  FirstElement ! startElection,
+  timer:sleep(100),
+  %kill to coordinator before he sent his message Muahaha
+  lists:nth(5, List_of_Friends) ! kill,
+  timer:sleep(2500),
+  Counter  ! {get, election_messages},
+  receive
+    X -> io:format("Election-Messages sent: ~p ~nin Total: ~p election messages were sent ~n", [X, lists:flatlength(X)])
+  end,
+  io:format("Kill the process \n"),
+  ThirdElement = lists:nth(5, List_of_Friends),
+  ThirdElement ! kill,
+  FirstElement ! startElection,
+  timer:sleep(2500),
+  Counter  ! {get, election_messages},
+  receive
+    XS -> io:format("Election-Messages sent: ~p ~nin Total: ~p election messages were sent ~n", [XS, lists:flatlength(XS)])
+  end.
